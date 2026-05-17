@@ -47,3 +47,15 @@ def test_embedding_retrieval_metrics_reward_correct_top1():
 
     assert metrics["top1"] == 1.0
     assert metrics["mrr"] == 1.0
+
+
+def test_embedding_retrieval_metrics_separate_strict_and_positive_top1():
+    predicted = torch.tensor([[0.0, 1.0], [1.0, 0.0]])
+    target = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    positive_mask = torch.ones(2, 2, dtype=torch.bool)
+
+    metrics = _embedding_retrieval_metrics(predicted, target, positive_mask)
+
+    assert metrics["top1"] == 0.0
+    assert metrics["positive_top1"] == 1.0
+    assert metrics["positives_per_query"] == 2.0

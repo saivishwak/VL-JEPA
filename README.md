@@ -120,11 +120,12 @@ training:
   max_eval_batches: 10
 ```
 
-This logs `eval/loss`, `eval/top1`, `eval/mrr`, `eval/random_baseline_loss`, and
-`eval/contrastive_batch_size` for VL-JEPA training, or `decoder_eval/loss` for decoder
-training. `eval/top1` and `eval/mrr` are in-batch embedding retrieval scores: they measure
-whether the predicted embedding ranks the correct target embedding highly among the eval
-batch candidates.
+This logs `eval/loss`, strict `eval/top1`, strict `eval/mrr`, multi-positive
+`eval/positive_top1`, multi-positive `eval/positive_mrr`, `eval/positives_per_query`,
+`eval/random_baseline_loss`, and `eval/contrastive_batch_size` for VL-JEPA training, or
+`decoder_eval/loss` for decoder training. `eval/top1` and `eval/mrr` require the exact
+paired target embedding to rank highly. The `positive_*` variants also count same-text
+targets as positives, which is useful for repeated VQA answers but can be inflated.
 
 ## Visualize Loss
 

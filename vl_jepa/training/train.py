@@ -116,18 +116,26 @@ def _embedding_retrieval_metrics(
     predicted_norm = torch.nn.functional.normalize(predicted, p=2, dim=-1)
     target_norm = torch.nn.functional.normalize(target, p=2, dim=-1)
     scores = predicted_norm @ target_norm.T
+    labels = torch.arange(scores.size(0), device=scores.device)
+    order = torch.argsort(scores, dim=1, descending=True)
+    strict_top1 = (order[:, 0] == labels).float().mean()
+    strict_ranks = (order == labels[:, None]).float().argmax(dim=1) + 1
+    strict_mrr = (1.0 / strict_ranks.float()).mean()
     if positive_mask is None:
         positive_mask = torch.eye(scores.size(0), dtype=torch.bool, device=scores.device)
     else:
         positive_mask = positive_mask.to(device=scores.device, dtype=torch.bool)
-    order = torch.argsort(scores, dim=1, descending=True)
     ordered_positive = torch.gather(positive_mask, 1, order)
-    top1 = ordered_positive[:, 0].float().mean()
+    positive_top1 = ordered_positive[:, 0].float().mean()
     first_positive = ordered_positive.float().argmax(dim=1) + 1
-    mrr = (1.0 / first_positive.float()).mean()
+    positive_mrr = (1.0 / first_positive.float()).mean()
+    positives_per_query = positive_mask.float().sum(dim=1).mean()
     return {
-        "top1": float(top1.detach().cpu()),
-        "mrr": float(mrr.detach().cpu()),
+        "top1": float(strict_top1.detach().cpu()),
+        "mrr": float(strict_mrr.detach().cpu()),
+        "positive_top1": float(positive_top1.detach().cpu()),
+        "positive_mrr": float(positive_mrr.detach().cpu()),
+        "positives_per_query": float(positives_per_query.detach().cpu()),
     }
 
 
@@ -213,6 +221,9 @@ def evaluate_vl_jepa_loss(
     losses = []
     top1_scores = []
     mrr_scores = []
+    positive_top1_scores = []
+    positive_mrr_scores = []
+    positives_per_query_scores = []
     contrastive_batch_sizes = []
     for batch_index, batch in enumerate(loader, start=1):
         if max_batches is not None and batch_index > max_batches:
@@ -242,6 +253,9 @@ def evaluate_vl_jepa_loss(
         losses.append(float(loss.detach().cpu()))
         top1_scores.append(retrieval_metrics["top1"])
         mrr_scores.append(retrieval_metrics["mrr"])
+        positive_top1_scores.append(retrieval_metrics["positive_top1"])
+        positive_mrr_scores.append(retrieval_metrics["positive_mrr"])
+        positives_per_query_scores.append(retrieval_metrics["positives_per_query"])
         contrastive_batch_sizes.append(predicted.size(0))
     if was_training:
         model.train()
@@ -255,6 +269,17 @@ def evaluate_vl_jepa_loss(
         "loss": mean_loss,
         "top1": sum(top1_scores) / len(top1_scores) if top1_scores else 0.0,
         "mrr": sum(mrr_scores) / len(mrr_scores) if mrr_scores else 0.0,
+        "positive_top1": (
+            sum(positive_top1_scores) / len(positive_top1_scores) if positive_top1_scores else 0.0
+        ),
+        "positive_mrr": (
+            sum(positive_mrr_scores) / len(positive_mrr_scores) if positive_mrr_scores else 0.0
+        ),
+        "positives_per_query": (
+            sum(positives_per_query_scores) / len(positives_per_query_scores)
+            if positives_per_query_scores
+            else 0.0
+        ),
         "random_baseline_loss": math.log(mean_batch_size) if mean_batch_size > 0 else 0.0,
         "contrastive_batch_size": mean_batch_size,
     }
@@ -402,6 +427,21 @@ def train_vl_jepa_from_config(config_path: str | Path) -> Path:
                             writer.add_scalar("eval/loss", eval_metrics["loss"], global_step)
                             writer.add_scalar("eval/top1", eval_metrics["top1"], global_step)
                             writer.add_scalar("eval/mrr", eval_metrics["mrr"], global_step)
+                            writer.add_scalar(
+                                "eval/positive_top1",
+                                eval_metrics["positive_top1"],
+                                global_step,
+                            )
+                            writer.add_scalar(
+                                "eval/positive_mrr",
+                                eval_metrics["positive_mrr"],
+                                global_step,
+                            )
+                            writer.add_scalar(
+                                "eval/positives_per_query",
+                                eval_metrics["positives_per_query"],
+                                global_step,
+                            )
                             writer.add_scalar(
                                 "eval/random_baseline_loss",
                                 eval_metrics["random_baseline_loss"],
