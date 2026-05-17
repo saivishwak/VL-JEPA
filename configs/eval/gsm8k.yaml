@@ -1,8 +1,0 @@
-name: eval-gsm8k
-run_root: runs
-task: gsm8k
-checkpoint: runs/example/checkpoint-final
-input_file: data/gsm8k/gsm8k_test.jsonl
-max_examples: 100
-max_new_tokens: 256
-temperature: 0.0

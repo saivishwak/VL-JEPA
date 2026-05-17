@@ -1,0 +1,6 @@
+name: vl-jepa-eval-vqa
+run_root: runs
+checkpoint: runs/vl_jepa/checkpoint-final
+input_file: data/vl_jepa/gqa_testdev.jsonl
+task: vqa
+top_k: [1]

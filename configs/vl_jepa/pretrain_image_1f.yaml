@@ -1,0 +1,48 @@
+name: vl-jepa-pretrain-image-1f
+run_root: runs
+
+model:
+  vision_encoder: facebook/vjepa2-vitl-fpc64-256
+  predictor_model: meta-llama/Llama-3.2-1B
+  target_encoder: google/embeddinggemma-300m
+  decoder_model: null
+  embedding_dim: 1536
+  predictor_layers: 8
+  max_query_length: 512
+  max_target_length: 512
+  image_size: 256
+  num_frames: 1
+  freeze_x_encoder: true
+  y_encoder_lr_multiplier: 0.05
+  temperature: 0.07
+  trust_remote_code: true
+  hf_token: true
+  torch_dtype: auto
+  tiny: false
+
+data:
+  # Generate with:
+  # vl-jepa download-open --dataset flickr30k --split test --output-dir data/vl_jepa
+  # Paper pretraining is query-free, so this overrides downloader caption prompts.
+  train_file: data/vl_jepa/flickr30k_test.jsonl
+  query_override: ""
+
+training:
+  # Paper image pretraining: 100k steps, effective global batch 24k, constant LR 5e-5.
+  # RTX 4090 24GB local setting: true InfoNCE contrastive batch = batch_size *
+  # contrastive_accum_batches = 2. Gradient accumulation is optimizer-only and does
+  # not add contrastive negatives.
+  seed: 42
+  deterministic: true
+  max_steps: 100000
+  paper_effective_batch_size: 24000
+  batch_size: 2
+  contrastive_accum_batches: 1
+  grad_accum: 1
+  learning_rate: 5.0e-5
+  scheduler: constant
+  weight_decay: 0.0
+  num_workers: 0
+  tensorboard: true
+  log_steps: 10
+  checkpoint_steps: 10000

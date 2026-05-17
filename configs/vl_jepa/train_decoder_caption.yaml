@@ -1,0 +1,39 @@
+name: vl-jepa-decoder-caption
+run_root: runs
+
+# Train this after VL-JEPA image/SFT training. For the current captioning setup,
+# point this at your image-pretrain checkpoint or an SFT checkpoint.
+checkpoint: runs/20260518-012337-vl-jepa-pretrain-image-1f/checkpoint-final
+
+decoder:
+  # Llama readout model. Adapter-only training is the RTX 4090-friendly default:
+  # it freezes the Llama weights and trains the VL-JEPA embedding -> Llama-prefix projection.
+  model_name: meta-llama/Llama-3.2-1B
+  train_lm: false
+  embedding_source: predicted
+  max_length: 128
+  trust_remote_code: true
+  hf_token: true
+  torch_dtype: auto
+
+data:
+  # Same captioning dataset used by image pretraining.
+  # Generate with:
+  # vl-jepa download-open --dataset flickr30k --split test --output-dir data/vl_jepa
+  train_file: data/vl_jepa/flickr30k_test.jsonl
+  query_override: "Caption the image."
+
+training:
+  seed: 42
+  deterministic: true
+  max_steps: 100000
+  batch_size: 1
+  grad_accum: 1
+  learning_rate: 1.0e-4
+  scheduler: cosine
+  min_learning_rate: 0.0
+  weight_decay: 0.0
+  num_workers: 0
+  tensorboard: true
+  log_steps: 10
+  checkpoint_steps: 10000

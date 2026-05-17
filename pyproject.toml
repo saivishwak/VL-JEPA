@@ -3,13 +3,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "llm-jepa"
+name = "vl-jepa"
 version = "0.1.0"
-description = "Production-ready LLM-JEPA training, dataset preparation, inference, and evaluation toolkit."
+description = "Paper-faithful VL-JEPA training, dataset preparation, inference, and evaluation toolkit."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "LLM-JEPA Contributors" }]
+authors = [{ name = "VL-JEPA Contributors" }]
 dependencies = [
   "accelerate>=0.34",
   "datasets>=2.20",
@@ -18,9 +18,11 @@ dependencies = [
   "numpy>=1.26",
   "omegaconf>=2.3",
   "peft>=0.12",
+  "pillow>=10.0",
   "pydantic>=2.7",
   "pyyaml>=6.0",
   "scikit-learn>=1.4",
+  "tensorboard>=2.20.0",
   "torch>=2.3",
   "tqdm>=4.66",
   "transformers>=4.44",
@@ -35,10 +37,10 @@ dev = [
 ]
 
 [project.scripts]
-llm-jepa = "llm_jepa.cli:app"
+vl-jepa = "vl_jepa.cli:app"
 
 [tool.setuptools.packages.find]
-include = ["llm_jepa*"]
+include = ["vl_jepa*"]
 
 [tool.ruff]
 line-length = 100
@@ -46,6 +48,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

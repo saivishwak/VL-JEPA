@@ -1,0 +1,6 @@
+name: vl-jepa-eval-classification
+run_root: runs
+checkpoint: runs/vl_jepa/checkpoint-final
+input_file: data/vl_jepa/ssv2_val.jsonl
+task: classification
+top_k: [1, 5]

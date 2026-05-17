@@ -1,25 +1,23 @@
-# LLM-JEPA
+# VL-JEPA
 
-LLM-JEPA is a structured PyTorch/Hugging Face project for text-generation JEPA training.
-It reproduces the core idea from `galilai-group/llm-jepa`: combine causal language-model
-fine-tuning with a representation objective that aligns the hidden states of an input
-view, such as a problem statement, with an output view, such as an answer, program, or label.
+VL-JEPA is a PyTorch/Hugging Face implementation scaffold for the paper
+“VL-JEPA: Joint Embedding Predictive Architecture for Vision-language”.
 
-The first version focuses on LLM generation. The code is organized so a later multimodal
-image/V-JEPA path can reuse dataset, training, and evaluation interfaces.
+The project is vision-language only. It predicts continuous target-text embeddings from
+visual inputs and optional textual queries, then uses those embeddings for classification,
+retrieval, VQA, selective decoding, or optional text readout.
 
 ## Features
 
-- Public dataset preparation for `synth`, `turk`, `gsm8k`, `spider`, `hellaswag`,
-  `paraphrase`, `rotten_tomatoes`, and `yelp`.
-- Synthetic JSONL generation for quick local smoke runs.
-- Regular supervised fine-tuning and LLM-JEPA fine-tuning.
-- Cosine, MSE, L2, and InfoNCE JEPA losses.
-- Predictor tokens, LoRA, additive-mask single-forward JEPA mode, random JEPA-loss dropout,
-  same-FLOP scheduling, mixed precision, gradient accumulation, and checkpoint resume.
-- Batch and single-prompt inference.
-- Generation metrics, Spider SQLite execution evaluation, embedding cosine analysis, and
-  JSON/Markdown reports.
+- Paper-shaped `X_V, X_Q, Y` JSONL manifests for image/video captioning, classification,
+  retrieval, VQA, text triplets, selective decoding, and world-prediction style tasks.
+- Frozen visual X-Encoder wrapper, Llama-initialized predictor, EmbeddingGemma-style
+  Y-Encoder, and optional inference-only Y-Decoder.
+- Bidirectional InfoNCE objective in the shared target embedding space.
+- VL-JEPA training loop with Y-Encoder learning-rate multiplier and checkpoint save/load.
+- Candidate ranking for open-vocabulary classification, retrieval, and discriminative VQA.
+- Selective-decoding utilities for embedding streams.
+- Tiny model mode for local tests without downloading paper-scale checkpoints.
 
 ## Install
 
@@ -31,71 +29,145 @@ pip install -e ".[dev]"
 
 Install a CUDA-specific PyTorch build first if your machine requires one.
 
+For gated model checkpoints such as Llama, log in before training:
+
+```bash
+hf auth login
+hf auth whoami
+```
+
+Configs set `hf_token: true`, which tells Hugging Face loaders to use your logged-in token.
+For non-interactive jobs, set `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN`.
+
 ## Quick Smoke Run
 
 ```bash
-llm-jepa prepare-data --task synthetic --output-dir data/synthetic --train-size 32 --test-size 8
-llm-jepa smoke-test
+vl-jepa train --config configs/vl_jepa/smoke_tiny.yaml
 ```
 
-### Prepare dataset
+## Prepare A Manifest
 
 ```bash
-llm-jepa prepare-data --task gsm8k --output-dir data/gsm8k
+vl-jepa prepare \
+  --dataset datacomp \
+  --split train \
+  --source data/vl_jepa/datacomp_train_source.jsonl \
+  --output-dir data/vl_jepa
 ```
+
+## Download Open Datasets
+
+For public Hugging Face datasets, use the downloader to materialize images and write
+VL-JEPA JSONL plus a manifest:
+
+```bash
+vl-jepa download-open --dataset flickr30k --split test --max-examples 100
+```
+
+The same downloader is also available as a script:
+
+```bash
+python scripts/download_open_datasets.py flickr30k --split test --max-examples 100
+```
+
+Available presets:
+
+- `flickr30k`: image captioning.
+- `coco_captions`: image captioning.
+- `vqav2`: visual question answering.
+- `ok_vqa`: visual question answering.
+
+For `vqav2` and `ok_vqa`, use `--split validation`. The downloader also accepts
+legacy aliases such as `val` and `val2014` and maps them to `validation`.
+
+Restricted or unreleased paper datasets such as Action100M and the PLM mixture still require
+separate access and should be registered with `vl-jepa prepare`.
 
 ## Train
 
 ```bash
-llm-jepa train --config configs/train/llm_jepa.yaml
+vl-jepa train --config configs/vl_jepa/pretrain_image_1f.yaml
 ```
 
-For multi-GPU:
+Train the optional Llama Y-Decoder readout after you have a VL-JEPA checkpoint:
 
 ```bash
-torchrun --nproc_per_node=2 scripts/train.py --config configs/train/llm_jepa.yaml
+vl-jepa train-decoder --config configs/vl_jepa/train_decoder_caption.yaml
 ```
+
+The decoder stage freezes VL-JEPA and, by default, freezes the Llama weights too. It trains
+the embedding-to-Llama prefix projection on the same captioning JSONL used for image
+captioning. Set `decoder.train_lm: true` in the decoder config only if you want to finetune
+the Llama decoder weights as well.
+
+Long training runs can save periodic checkpoints with:
+
+```yaml
+training:
+  checkpoint_steps: 500
+```
+
+This writes `checkpoint-step-500/`, `checkpoint-step-1000/`, etc. under the run directory,
+plus `checkpoint-final/` at the end.
+
+## Visualize Loss
+
+Training writes TensorBoard events under each run directory by default:
+
+```text
+runs/<timestamp>-<run-name>/tensorboard/
+```
+
+Launch TensorBoard with:
+
+```bash
+tensorboard --logdir runs
+```
+
+Logged scalars:
+
+- `train/loss`
+- `train/lr`
+- `train/y_encoder_lr`
+- `train/epoch`
 
 ## Inference
 
 ```bash
-llm-jepa infer --checkpoint runs/example/checkpoint-final --prompt "What is 17 + 25?"
+vl-jepa infer \
+  --checkpoint runs/example-decoder/checkpoint-final \
+  --visual-path examples/image.jpg \
+  --query "Caption the image."
+```
+
+`infer` returns text only when the checkpoint was configured with a `decoder_model`.
+Pretraining checkpoints with `decoder_model: null` predict target embeddings. For those
+checkpoints, print the embedding explicitly:
+
+```bash
+vl-jepa infer \
+  --checkpoint runs/example/checkpoint-final \
+  --visual-path examples/image.jpg \
+  --query "Caption the image." \
+  --output embedding
+```
+
+or rank candidate captions/answers:
+
+```bash
+vl-jepa infer \
+  --checkpoint runs/example/checkpoint-final \
+  --visual-path examples/image.jpg \
+  --query "Caption the image." \
+  --candidate "a dog on grass" \
+  --candidate "a car on a road"
 ```
 
 ## Evaluation
 
 ```bash
-llm-jepa eval --config configs/eval/gsm8k.yaml
+vl-jepa eval --config configs/vl_jepa/eval_classification.yaml
 ```
-
-### Latent-space plots
-
-Generate a 2D PNG projection of token or contextual embeddings to inspect relationships such as
-`king`, `man`, `queen`, and `woman`:
-
-```bash
-.venv/bin/python scripts/plot_latent_space.py \
-  --checkpoint runs/example/checkpoint-final \
-  --output runs/latent_space.png \
-  --term king --term man --term queen --term woman
-```
-
-By default this plots the model's input token embedding space. To plot the JEPA latent space,
-use `--mode jepa`; this plots paired input and target view hidden states at the same
-representation positions used by the JEPA loss:
-
-```bash
-.venv/bin/python scripts/plot_latent_space.py \
-  --checkpoint runs/example/checkpoint-final \
-  --mode jepa \
-  --data-file data/gsm8k/gsm8k_train.jsonl \
-  --predictors 2 \
-  --last-token -2 \
-  --output runs/jepa_latent_space.png
-```
-
-Add `--mode contextual` to plot prompt-level hidden-state embeddings, or `--projection tsne`
-for t-SNE instead of PCA.
 
 Outputs are written under `runs/{timestamp}-{name}/` with the resolved config, checkpoints,
 predictions, metrics, and manifests.
@@ -103,13 +175,11 @@ predictions, metrics, and manifests.
 ## Project Layout
 
 ```text
-llm_jepa/
-├── data/          # schemas, dataset builders, public task adapters
-├── modeling/      # tokenizer setup, special tokens, LoRA helpers, Trainer subclass
-├── training/      # collators, losses, additive masks, training entrypoint
-├── inference/     # generation utilities
-├── evaluation/    # generation, Spider, and embedding metrics
+vl_jepa/
+├── data/          # VL-JEPA schemas, manifests, visual transforms, and loaders
+├── modeling/      # X-Encoder, Predictor, Y-Encoder, optional Y-Decoder
+├── training/      # bidirectional InfoNCE and VL-JEPA training loop
+├── inference/     # embedding prediction, candidate ranking, optional decoding
+├── evaluation/    # classification, retrieval, VQA, text triplet, selective decoding
 └── utils/         # config, IO, logging, reproducibility
 ```
-
-See `docs/` for dataset, training, evaluation, and multimodal roadmap notes.

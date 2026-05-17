@@ -1,0 +1,49 @@
+name: vl-jepa-pretrain-video-32f
+run_root: runs
+
+model:
+  vision_encoder: facebook/vjepa2-vitl-fpc64-256
+  predictor_model: meta-llama/Llama-3.2-1B
+  target_encoder: google/embeddinggemma-300m
+  decoder_model: null
+  embedding_dim: 1536
+  predictor_layers: 8
+  max_query_length: 512
+  max_target_length: 512
+  image_size: 256
+  num_frames: 32
+  freeze_x_encoder: true
+  y_encoder_lr_multiplier: 0.05
+  temperature: 0.07
+  trust_remote_code: true
+  hf_token: true
+  torch_dtype: auto
+  tiny: false
+
+data:
+  train_file: data/vl_jepa/action100m_train.jsonl
+  query_override: ""
+
+training:
+  # Paper final video continuation uses 10k optimizer steps with 32-frame inputs.
+  # The paper does not publish a separate effective batch size for this stage.
+  # RTX 4090 24GB local setting: keep microbatch 1 for video memory, then form
+  # a real contrastive batch of 2 before computing InfoNCE.
+  seed: 42
+  deterministic: true
+  # Continue from the latest run matching runs/*-vl-jepa-pretrain-video-8f/checkpoint-final/model.pt.
+  # Override with init_checkpoint: /path/to/checkpoint-final or /path/to/model.pt if needed.
+  init_checkpoint_run_name: vl-jepa-pretrain-video-8f
+  require_init_checkpoint: true
+  max_steps: 10000
+  paper_effective_batch_size: null
+  batch_size: 1
+  contrastive_accum_batches: 2
+  grad_accum: 1
+  learning_rate: 5.0e-5
+  scheduler: constant
+  weight_decay: 0.0
+  num_workers: 0
+  tensorboard: true
+  log_steps: 10
+  checkpoint_steps: 500

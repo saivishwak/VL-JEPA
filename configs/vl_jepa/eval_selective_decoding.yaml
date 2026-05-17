@@ -1,0 +1,7 @@
+name: vl-jepa-eval-selective-decoding
+run_root: runs
+checkpoint: runs/vl_jepa/checkpoint-final
+input_file: data/vl_jepa/egoexo4d_stream_val.jsonl
+task: selective_decoding
+decode_frequencies: [2.0, 1.0, 0.35, 0.1, 0.01]
+pool_segments: true
