@@ -8,12 +8,10 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from vl_jepa.data.collators import VLJEPADataCollator
-from vl_jepa.data.datasets import VLJEPAManifestDataset
 from vl_jepa.modeling import VLJEPA, VLJEPAConfig
 from vl_jepa.training.train import (
-    _device,
     _build_loader,
+    _device,
     _move_tensors,
     _scheduler,
     _summary_writer,

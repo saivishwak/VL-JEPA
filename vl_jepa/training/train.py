@@ -108,6 +108,29 @@ def _positive_mask_from_texts(texts: list[str], device: torch.device) -> torch.T
     )
 
 
+def _embedding_retrieval_metrics(
+    predicted: torch.Tensor,
+    target: torch.Tensor,
+    positive_mask: torch.Tensor | None = None,
+) -> dict[str, float]:
+    predicted_norm = torch.nn.functional.normalize(predicted, p=2, dim=-1)
+    target_norm = torch.nn.functional.normalize(target, p=2, dim=-1)
+    scores = predicted_norm @ target_norm.T
+    if positive_mask is None:
+        positive_mask = torch.eye(scores.size(0), dtype=torch.bool, device=scores.device)
+    else:
+        positive_mask = positive_mask.to(device=scores.device, dtype=torch.bool)
+    order = torch.argsort(scores, dim=1, descending=True)
+    ordered_positive = torch.gather(positive_mask, 1, order)
+    top1 = ordered_positive[:, 0].float().mean()
+    first_positive = ordered_positive.float().argmax(dim=1) + 1
+    mrr = (1.0 / first_positive.float()).mean()
+    return {
+        "top1": float(top1.detach().cpu()),
+        "mrr": float(mrr.detach().cpu()),
+    }
+
+
 def save_training_checkpoint(
     *,
     model: torch.nn.Module,
@@ -188,6 +211,8 @@ def evaluate_vl_jepa_loss(
     pending_targets: list[torch.Tensor] = []
     pending_target_texts: list[str] = []
     losses = []
+    top1_scores = []
+    mrr_scores = []
     contrastive_batch_sizes = []
     for batch_index, batch in enumerate(loader, start=1):
         if max_batches is not None and batch_index > max_batches:
@@ -213,7 +238,10 @@ def evaluate_vl_jepa_loss(
             temperature=float(model_cfg.temperature),
             positive_mask=positive_mask,
         )
+        retrieval_metrics = _embedding_retrieval_metrics(predicted, target, positive_mask)
         losses.append(float(loss.detach().cpu()))
+        top1_scores.append(retrieval_metrics["top1"])
+        mrr_scores.append(retrieval_metrics["mrr"])
         contrastive_batch_sizes.append(predicted.size(0))
     if was_training:
         model.train()
@@ -225,6 +253,8 @@ def evaluate_vl_jepa_loss(
     )
     return {
         "loss": mean_loss,
+        "top1": sum(top1_scores) / len(top1_scores) if top1_scores else 0.0,
+        "mrr": sum(mrr_scores) / len(mrr_scores) if mrr_scores else 0.0,
         "random_baseline_loss": math.log(mean_batch_size) if mean_batch_size > 0 else 0.0,
         "contrastive_batch_size": mean_batch_size,
     }
@@ -320,7 +350,8 @@ def train_vl_jepa_from_config(config_path: str | Path) -> Path:
                 positive_mask = None
                 if bool(train_cfg.get("multi_positive_by_text", False)):
                     positive_mask = _positive_mask_from_texts(
-                        pending_target_texts, predicted.device
+                        pending_target_texts,
+                        predicted.device,
                     )
                 pending_target_texts.clear()
                 loss = bidirectional_infonce_loss(
@@ -369,6 +400,8 @@ def train_vl_jepa_from_config(config_path: str | Path) -> Path:
                         progress.set_postfix(loss=loss_value, eval_loss=eval_metrics["loss"])
                         if writer is not None:
                             writer.add_scalar("eval/loss", eval_metrics["loss"], global_step)
+                            writer.add_scalar("eval/top1", eval_metrics["top1"], global_step)
+                            writer.add_scalar("eval/mrr", eval_metrics["mrr"], global_step)
                             writer.add_scalar(
                                 "eval/random_baseline_loss",
                                 eval_metrics["random_baseline_loss"],
