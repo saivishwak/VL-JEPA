@@ -22,6 +22,7 @@ model:
 
 data:
   train_file: data/vl_jepa/action100m_train.jsonl
+  eval_file: data/vl_jepa/action100m_train.jsonl
   query_override: ""
 
 training:
@@ -47,3 +48,5 @@ training:
   tensorboard: true
   log_steps: 10
   checkpoint_steps: 500
+  eval_steps: 500
+  max_eval_batches: 10

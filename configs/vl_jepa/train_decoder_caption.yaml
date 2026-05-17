@@ -21,12 +21,13 @@ data:
   # Generate with:
   # vl-jepa download-open --dataset flickr30k --split test --output-dir data/vl_jepa
   train_file: data/vl_jepa/flickr30k_test.jsonl
+  eval_file: data/vl_jepa/flickr30k_test.jsonl
   query_override: "Caption the image."
 
 training:
   seed: 42
   deterministic: true
-  max_steps: 100000
+  max_steps: 1000
   batch_size: 1
   grad_accum: 1
   learning_rate: 1.0e-4
@@ -36,4 +37,6 @@ training:
   num_workers: 0
   tensorboard: true
   log_steps: 10
-  checkpoint_steps: 10000
+  checkpoint_steps: 200
+  eval_steps: 200
+  max_eval_batches: 10

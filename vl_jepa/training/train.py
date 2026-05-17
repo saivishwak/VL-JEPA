@@ -140,6 +140,96 @@ def save_training_checkpoint(
         torch.save(training_state, checkpoint_dir / "training_state.pt")
 
 
+def _build_loader(
+    *,
+    data_file: str,
+    model: torch.nn.Module,
+    model_cfg: VLJEPAConfig,
+    data_cfg: dict[str, Any],
+    train_cfg: dict[str, Any],
+    shuffle: bool,
+) -> DataLoader:
+    dataset = VLJEPAManifestDataset(
+        data_file,
+        model.query_tokenizer,
+        model.target_tokenizer,
+        num_frames=int(model_cfg.num_frames),
+        image_size=int(model_cfg.image_size),
+        max_query_length=int(model_cfg.max_query_length),
+        max_target_length=int(model_cfg.max_target_length),
+        query_override=data_cfg.get("query_override"),
+    )
+    collator = VLJEPADataCollator(model.query_tokenizer, model.target_tokenizer)
+    return DataLoader(
+        dataset,
+        batch_size=int(train_cfg.get("batch_size", 1)),
+        shuffle=shuffle,
+        num_workers=int(train_cfg.get("num_workers", 0)),
+        collate_fn=collator,
+    )
+
+
+@torch.no_grad()
+def evaluate_vl_jepa_loss(
+    *,
+    model: torch.nn.Module,
+    loader: DataLoader,
+    model_cfg: VLJEPAConfig,
+    train_cfg: dict[str, Any],
+    device: torch.device,
+    max_batches: int | None = None,
+) -> dict[str, float]:
+    was_training = model.training
+    model.eval()
+    contrastive_accum_batches = int(train_cfg.get("eval_contrastive_accum_batches", 0)) or int(
+        train_cfg.get("contrastive_accum_batches", 1)
+    )
+    pending_predicted: list[torch.Tensor] = []
+    pending_targets: list[torch.Tensor] = []
+    pending_target_texts: list[str] = []
+    losses = []
+    contrastive_batch_sizes = []
+    for batch_index, batch in enumerate(loader, start=1):
+        if max_batches is not None and batch_index > max_batches:
+            break
+        batch = _move_tensors(batch, device)
+        embeddings = model.forward_embeddings(batch)
+        pending_predicted.append(embeddings["predicted_embedding"])
+        pending_targets.append(embeddings["target_embedding"])
+        pending_target_texts.extend(batch.get("target_texts", []))
+        if len(pending_predicted) < contrastive_accum_batches:
+            continue
+        predicted = torch.cat(pending_predicted, dim=0)
+        target = torch.cat(pending_targets, dim=0)
+        pending_predicted.clear()
+        pending_targets.clear()
+        positive_mask = None
+        if bool(train_cfg.get("multi_positive_by_text", False)):
+            positive_mask = _positive_mask_from_texts(pending_target_texts, predicted.device)
+        pending_target_texts.clear()
+        loss = bidirectional_infonce_loss(
+            predicted,
+            target,
+            temperature=float(model_cfg.temperature),
+            positive_mask=positive_mask,
+        )
+        losses.append(float(loss.detach().cpu()))
+        contrastive_batch_sizes.append(predicted.size(0))
+    if was_training:
+        model.train()
+    mean_loss = sum(losses) / len(losses) if losses else 0.0
+    mean_batch_size = (
+        sum(contrastive_batch_sizes) / len(contrastive_batch_sizes)
+        if contrastive_batch_sizes
+        else 0.0
+    )
+    return {
+        "loss": mean_loss,
+        "random_baseline_loss": math.log(mean_batch_size) if mean_batch_size > 0 else 0.0,
+        "contrastive_batch_size": mean_batch_size,
+    }
+
+
 def train_vl_jepa_from_config(config_path: str | Path) -> Path:
     config = load_config(config_path)
     train_cfg = config.get("training", {})
@@ -153,23 +243,13 @@ def train_vl_jepa_from_config(config_path: str | Path) -> Path:
     model = build_vl_jepa_model(config)
     model_cfg = VLJEPAConfig(**config.get("model", {}))
     data_cfg = config.get("data", {})
-    dataset = VLJEPAManifestDataset(
-        data_cfg["train_file"],
-        model.query_tokenizer,
-        model.target_tokenizer,
-        num_frames=int(model_cfg.num_frames),
-        image_size=int(model_cfg.image_size),
-        max_query_length=int(model_cfg.max_query_length),
-        max_target_length=int(model_cfg.max_target_length),
-        query_override=data_cfg.get("query_override"),
-    )
-    collator = VLJEPADataCollator(model.query_tokenizer, model.target_tokenizer)
-    loader = DataLoader(
-        dataset,
-        batch_size=int(train_cfg.get("batch_size", 1)),
+    loader = _build_loader(
+        data_file=data_cfg["train_file"],
+        model=model,
+        model_cfg=model_cfg,
+        data_cfg=data_cfg,
+        train_cfg=train_cfg,
         shuffle=True,
-        num_workers=int(train_cfg.get("num_workers", 0)),
-        collate_fn=collator,
     )
     device = _device()
     model.to(device)
@@ -194,6 +274,19 @@ def train_vl_jepa_from_config(config_path: str | Path) -> Path:
     epochs = int(train_cfg.get("num_epochs", 1))
     log_steps = int(train_cfg.get("log_steps", 1))
     checkpoint_steps = int(train_cfg.get("checkpoint_steps", 0))
+    eval_steps = int(train_cfg.get("eval_steps", 0))
+    eval_loader = None
+    if eval_steps and data_cfg.get("eval_file"):
+        eval_loader = _build_loader(
+            data_file=data_cfg["eval_file"],
+            model=model,
+            model_cfg=model_cfg,
+            data_cfg=data_cfg,
+            train_cfg=train_cfg,
+            shuffle=False,
+        )
+    max_eval_batches = train_cfg.get("max_eval_batches")
+    max_eval_batches = int(max_eval_batches) if max_eval_batches is not None else None
     steps_per_epoch = max(1, ceil(len(loader) / max(1, grad_accum * contrastive_accum_batches)))
     total_steps = max_steps or epochs * steps_per_epoch
     scheduler = _scheduler(optimizer, train_cfg, total_steps)
@@ -264,6 +357,28 @@ def train_vl_jepa_from_config(config_path: str | Path) -> Path:
                             global_step,
                         )
                         writer.add_scalar("train/epoch", epoch, global_step)
+                    if eval_loader is not None and global_step % eval_steps == 0:
+                        eval_metrics = evaluate_vl_jepa_loss(
+                            model=model,
+                            loader=eval_loader,
+                            model_cfg=model_cfg,
+                            train_cfg=train_cfg,
+                            device=device,
+                            max_batches=max_eval_batches,
+                        )
+                        progress.set_postfix(loss=loss_value, eval_loss=eval_metrics["loss"])
+                        if writer is not None:
+                            writer.add_scalar("eval/loss", eval_metrics["loss"], global_step)
+                            writer.add_scalar(
+                                "eval/random_baseline_loss",
+                                eval_metrics["random_baseline_loss"],
+                                global_step,
+                            )
+                            writer.add_scalar(
+                                "eval/contrastive_batch_size",
+                                eval_metrics["contrastive_batch_size"],
+                                global_step,
+                            )
                     if checkpoint_steps and global_step % checkpoint_steps == 0:
                         save_training_checkpoint(
                             model=model,

@@ -52,6 +52,7 @@ model:
   tiny: true
 data:
   train_file: {data_path}
+  eval_file: {data_path}
   query_override: ""
 training:
   seed: 42
@@ -63,6 +64,8 @@ training:
   weight_decay: 0.0
   tensorboard: false
   checkpoint_steps: 1
+  eval_steps: 1
+  max_eval_batches: 1
 """,
         encoding="utf-8",
     )
@@ -120,6 +123,7 @@ model:
   tiny: true
 data:
   train_file: {data_path}
+  eval_file: {data_path}
   query_override: ""
 training:
   seed: 42
@@ -149,6 +153,7 @@ decoder:
   max_length: 16
 data:
   train_file: {data_path}
+  eval_file: {data_path}
   query_override: "Caption the image."
 training:
   seed: 42
@@ -159,6 +164,8 @@ training:
   weight_decay: 0.0
   tensorboard: false
   checkpoint_steps: 1
+  eval_steps: 1
+  max_eval_batches: 1
 """,
         encoding="utf-8",
     )

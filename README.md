@@ -110,6 +110,19 @@ training:
 This writes `checkpoint-step-500/`, `checkpoint-step-1000/`, etc. under the run directory,
 plus `checkpoint-final/` at the end.
 
+Training can also run periodic validation loss:
+
+```yaml
+data:
+  eval_file: data/vl_jepa/vqav2_validation.jsonl
+training:
+  eval_steps: 500
+  max_eval_batches: 10
+```
+
+This logs `eval/loss`, `eval/random_baseline_loss`, and `eval/contrastive_batch_size`
+for VL-JEPA training, or `decoder_eval/loss` for decoder training.
+
 ## Visualize Loss
 
 Training writes TensorBoard events under each run directory by default:

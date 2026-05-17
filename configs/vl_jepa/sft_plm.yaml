@@ -26,6 +26,7 @@ data:
   # Alternative smaller open VQA source:
   # vl-jepa download-open --dataset ok_vqa --split validation --output-dir data/vl_jepa
   train_file: data/vl_jepa/vqav2_validation.jsonl
+  eval_file: data/vl_jepa/vqav2_validation.jsonl
 
 training:
   # Paper SFT: 83k steps, effective global batch 3,072, cosine LR.
@@ -56,4 +57,7 @@ training:
   tensorboard: true
   log_steps: 10
   # Save model checkpoints every N optimizer steps during long local runs.
-  checkpoint_steps: 10000
+  checkpoint_steps: 500
+  # Run a lightweight validation-loss pass every N optimizer steps.
+  eval_steps: 500
+  max_eval_batches: 10

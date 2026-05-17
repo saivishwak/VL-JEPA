@@ -25,6 +25,7 @@ data:
   # vl-jepa download-open --dataset flickr30k --split test --output-dir data/vl_jepa
   # Paper pretraining is query-free, so this overrides downloader caption prompts.
   train_file: data/vl_jepa/flickr30k_test.jsonl
+  eval_file: data/vl_jepa/flickr30k_test.jsonl
   query_override: ""
 
 training:
@@ -45,4 +46,6 @@ training:
   num_workers: 0
   tensorboard: true
   log_steps: 10
-  checkpoint_steps: 10000
+  checkpoint_steps: 500
+  eval_steps: 500
+  max_eval_batches: 10
