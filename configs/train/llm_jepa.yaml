@@ -1,0 +1,48 @@
+name: llm-jepa-gsm8k
+run_root: runs
+
+model:
+  name: Qwen/Qwen2.5-1.5B-Instruct
+  torch_dtype: auto
+  trust_remote_code: true
+
+data:
+  train_file: data/gsm8k/gsm8k_train.jsonl
+  eval_file: data/gsm8k/gsm8k_test.jsonl
+  max_length: 2048
+  plain: false
+  train_all: false
+
+training:
+  seed: 42
+  num_epochs: 4
+  batch_size: 1
+  eval_batch_size: 1
+  grad_accum: 8
+  learning_rate: 1.0e-5
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  logging_steps: 10
+  save_steps: 500
+  eval_steps: 500
+  save_total_limit: 2
+  bf16: true
+  fp16: false
+  report_to: none
+
+jepa:
+  regular: false
+  lambda: 0.5
+  gamma: 1.0
+  predictors: 2
+  last_token: -2
+  loss: cosine
+  additive_mask: true
+  jepa_ratio: -1.0
+  reverse_pred: false
+  front_pred: false
+
+lora:
+  enabled: true
+  rank: 16
+  dropout: 0.1

@@ -1,0 +1,9 @@
+name: eval-spider
+run_root: runs
+task: spider
+checkpoint: runs/example/checkpoint-final
+input_file: data/spider/spider_test.jsonl
+spider_path: data/spider/database
+max_examples: 100
+max_new_tokens: 256
+temperature: 0.0

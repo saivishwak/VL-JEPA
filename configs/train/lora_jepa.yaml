@@ -1,0 +1,39 @@
+name: lora-jepa-synthetic
+run_root: runs
+
+model:
+  name: sshleifer/tiny-gpt2
+  torch_dtype: auto
+  trust_remote_code: false
+
+data:
+  train_file: data/synthetic/synthetic_train.jsonl
+  eval_file: data/synthetic/synthetic_test.jsonl
+  max_length: 256
+
+training:
+  seed: 7
+  num_epochs: 1
+  batch_size: 2
+  eval_batch_size: 2
+  grad_accum: 1
+  learning_rate: 5.0e-5
+  logging_steps: 1
+  save_steps: 20
+  eval_steps: 20
+  bf16: false
+  fp16: false
+  report_to: none
+
+jepa:
+  regular: false
+  lambda: 0.1
+  gamma: 1.0
+  predictors: 1
+  last_token: -1
+  loss: cosine
+  additive_mask: false
+  jepa_ratio: -1.0
+
+lora:
+  enabled: false

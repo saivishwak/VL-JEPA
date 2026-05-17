@@ -1,0 +1,5 @@
+task: gsm8k
+output_dir: data/gsm8k
+train_size: 7473
+test_size: 1319
+seed: 42

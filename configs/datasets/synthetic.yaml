@@ -1,0 +1,5 @@
+task: synthetic
+output_dir: data/synthetic
+train_size: 128
+test_size: 32
+seed: 7
